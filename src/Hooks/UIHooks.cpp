@@ -35,6 +35,8 @@
 #include "sombrero/shared/linq.hpp"
 #include "sombrero/shared/linq_functional.hpp"
 
+#include "CustomTypes/RequirementsUI.hpp"
+
 MAKE_AUTO_HOOK_MATCH(StandardLevelDetailView_SetContent, &GlobalNamespace::StandardLevelDetailView::SetContent, void, GlobalNamespace::StandardLevelDetailView* self, ::GlobalNamespace::IBeatmapLevel* level, GlobalNamespace::BeatmapDifficulty defaultDifficulty, GlobalNamespace::BeatmapCharacteristicSO* defaultBeatmapCharacteristic, GlobalNamespace::PlayerData* playerData)
 {
 	auto currentSelectedLevel = reinterpret_cast<GlobalNamespace::IPreviewBeatmapLevel*>(level);
@@ -60,10 +62,62 @@ MAKE_AUTO_HOOK_MATCH(StandardLevelDetailView_RefreshContent, &GlobalNamespace::S
 	auto characteristic = self->selectedDifficultyBeatmap->get_parentDifficultyBeatmapSet()->get_beatmapCharacteristic();
 
 	SongUtils::SongInfo::UpdateMapData(SongUtils::GetCurrentInfoDat(), self->selectedDifficultyBeatmap);
-
-	UIUtils::SetupOrUpdateRequirementsModal(self);
-
 	RequirementUtils::UpdatePlayButton();
+
+	//UIUtils::SetupOrUpdateRequirementsModal(self);
+	// Replacing the requirements UI with the equivalent from PC to account for any things that have been implemented differently before
+	auto requirementsUI = PinkCore::RequirementsUI::get_instance();
+	requirementsUI->set_buttonGlow(false);
+	requirementsUI->set_buttonInteractable(false);
+
+	requirementsUI->level = il2cpp_utils::try_cast<GlobalNamespace::CustomPreviewBeatmapLevel>(self->selectedDifficultyBeatmap->get_level()).value_or(nullptr);
+	if (!requirementsUI->level) return;
+	
+	auto& mapData = SongUtils::SongInfo::get_mapData();
+
+	if (mapData.dataIsValid) {
+		//If no additional information is present
+        if (mapData.currentRequirements.empty() &&
+            mapData.currentSuggestions.empty() &&
+            mapData.currentWarnings.empty() &&
+            mapData.currentInformation.empty() &&
+            mapData.currentContributors.empty() && !mapData.hasCustomColours) 
+		{
+            requirementsUI->set_buttonGlow(false);
+            requirementsUI->set_buttonInteractable(false);
+        } else if (mapData.currentWarnings.empty()) {
+            requirementsUI->set_buttonGlow(true);
+            requirementsUI->set_buttonInteractable(true);
+            requirementsUI->SetRainbowColors(mapData.hasCustomColours, true);
+        } else if (!mapData.currentWarnings.empty()) {
+            requirementsUI->set_buttonGlow(true);
+            requirementsUI->set_buttonInteractable(true);
+            // already done earlier
+			//if (mapData.additionalDifficultyData._warnings.Contains("WIP"))
+            //    ____actionButton.interactable = false;
+            requirementsUI->SetRainbowColors(mapData.hasCustomColours, true);
+        }
+	}
+
+	if (mapData.isWIP) {
+		requirementsUI->set_buttonGlow(true);
+		requirementsUI->set_buttonInteractable(true);
+	}
+
+	if (mapData.dataIsValid) {
+		for (const auto& req : mapData.currentRequirements) {
+			if (!RequirementUtils::GetRequirementInstalled(req)) {
+				requirementsUI->set_buttonGlow(true);
+				requirementsUI->set_buttonInteractable(true);
+				break;
+			}
+		}
+	}
+
+	if (mapData.characteristic->get_serializedName() == "MissingCharacteristic") {
+		requirementsUI->set_buttonGlow(true);
+		requirementsUI->set_buttonInteractable(true);
+	}
 
 	// set data for segmented controllers so they update with the selected level
     // if (self->level != nullptr && self->level->get_beatmapLevelData() != nullptr) {
